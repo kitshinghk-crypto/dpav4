@@ -29,7 +29,7 @@ opts.VariableTypes=["string","string","string","string","string","string"];
 opts.DataLines=[10001 12001];
 aes_param = readmatrix(index_file, opts);
 
-%%%%%%%%%%%%Use first 1000 traces to tain. attack on the rest 1000 traces%%%%%%%%%%%%
+%%%%%%%%%%%%Use first 1000 traces to train. attack on the rest 1000 traces%%%%%%%%%%%%
 trIdx=1:1000;
 teIdx=1001:2000;
 [offset_mean_trace, cov_mat, poi] = trainOffsetClassifier(aes_param(trIdx, :), traces(trIdx, :));
@@ -37,3 +37,124 @@ result=offsetClassifier(offset_mean_trace, cov_mat, poi, traces(teIdx, :));
 poi = trainCpa(aes_param(trIdx, :), traces(trIdx, :));
 key_cand=cpa128(aes_param(teIdx, :), traces(teIdx, :), result, poi);
 ```
+
+## Attack result
+Perform 5 2-fold validation on 2000 traces i.e. 1000 traces for training and 1000 traces for test
+```matlab
+%%%%%%%%%%%%Import traces  %%%%%%%%%%%%
+traces = importTraces("./DPA_contestv4_rsm/10000", 10000, 12000);
+%%%%%%%%%%%%Read index file%%%%%%%%%%%%
+index_file = "dpav4_rsm_index.txt";
+opts=delimitedTextImportOptions();
+opts.Delimiter=" ";
+opts.VariableNames=["key","plain_text","cipher_text","offset","dir_name","file_name"];
+opts.VariableTypes=["string","string","string","string","string","string"];
+opts.DataLines=[10001 12001];
+aes_param = readmatrix(index_file, opts);
+%%%%%%%%%%%%Perform k-fold to classify offset%%%%%%%%%%%%
+actual_key="6CECC67F287D083DEB8766F0738B36CF";
+fold = 2;
+foldtest_num = 5;
+foldtest_err = zeros(foldtest_num, 1);
+for count=1:foldtest_num
+    c = cvpartition(zeros(2000,1), 'KFold', fold);
+    err = zeros(c.NumTestSets,1);
+    for i = 1:c.NumTestSets
+        trIdx = c.training(i);
+        teIdx = c.test(i);
+        fprintf("Round=%d start training template on offset\n", i);
+        [offset_mean_trace, cov_mat, poi] = trainOffsetClassifier(aes_param(trIdx, :), traces(trIdx, :));
+        fprintf("Round=%d start classifer offset\n", i);
+        result=offsetClassifier(offset_mean_trace, cov_mat, poi, traces(teIdx, :));
+        fprintf("Round=%d start train cpa\n", i);
+        poi = trainCpa(aes_param(trIdx, :), traces(trIdx, :));
+        fprintf("Round=%d start cpa on key\n", i);
+        key_cand=cpa128(aes_param(teIdx, :), traces(teIdx, :), result, poi);
+        err(i) = pdist2(actual_key, key_cand, "hamming")*128/4;
+    end
+    foldtest_err(count) = mean(err);
+end
+foldtest_err
+```
+**Result**
+```
+Round=1 start training template on offset
+Round=1 start classifer offset
+Round=1 start train cpa
+Round=1 start cpa on key
+6cecc67f287d083deb8362f0728b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=2 start training template on offset
+Round=2 start classifer offset
+Round=2 start train cpa
+Round=2 start cpa on key
+6cecc67f287d0a35eb8362f0728b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=1 start training template on offset
+Round=1 start classifer offset
+Round=1 start train cpa
+Round=1 start cpa on key
+6cecc67f287d0835eb8362f0728b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=2 start training template on offset
+Round=2 start classifer offset
+Round=2 start train cpa
+Round=2 start cpa on key
+6cecc67f287d083deba366f0728b34cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=1 start training template on offset
+Round=1 start classifer offset
+Round=1 start train cpa
+Round=1 start cpa on key
+6cecc67f287d0835eb8366f0738b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=2 start training template on offset
+Round=2 start classifer offset
+Round=2 start train cpa
+Round=2 start cpa on key
+6cecc67b287d083deb8362f0728b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=1 start training template on offset
+Round=1 start classifer offset
+Round=1 start train cpa
+Round=1 start cpa on key
+6cecc67f287d0a35eb8362f0738b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=2 start training template on offset
+Round=2 start classifer offset
+Round=2 start train cpa
+Round=2 start cpa on key
+6cecc67f287d083d6b8366f0728b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=1 start training template on offset
+Round=1 start classifer offset
+Round=1 start train cpa
+Round=1 start cpa on key
+6cecc67f2875083deb8362f0728b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+Round=2 start training template on offset
+Round=2 start classifer offset
+Round=2 start train cpa
+Round=2 start cpa on key
+6cecc67f287d0835eb8366f0738b36cf
+Warning: Converting input data to double. 
+> In pdist2 (line 253) 
+
+foldtest_err =
+
+    4.0000
+    4.0000
+    3.0000
+    3.5000
+    3.0000
+```
+The attack on average can recover 89% of the secret key.
